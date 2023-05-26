@@ -2,6 +2,14 @@ const Users = require("../model/user");
 const Product = require("../model/Product");
 const Orders = require("../model/order");
 const fs = require("fs");
+const formidable = require("formidable");
+const cloudinary = require("cloudinary").v2;
+
+cloudinary.config({
+  cloud_name: "dviel1ssr",
+  api_key: "456421157484577",
+  api_secret: "o_21SmyIKn7pZS8FZuQwW-k515I",
+});
 
 exports.getAdminProducts = async (req, res, next) => {
   const { adminId } = req.params;
@@ -16,23 +24,36 @@ exports.getAdminProducts = async (req, res, next) => {
 };
 
 exports.addProduct = (req, res, next) => {
-  const info = req.body;
-  const file = req.files;
-  imageUrls = file.map((file) => file.path);
-  const product = new Product({
-    title: info.title,
-    description: info.description,
-    price: +info.price,
-    imageUrl: imageUrls,
-    quantity: +info.quantity,
-    ownerId: req.userInfo.userId,
+  console.log(req.userInfo);
+  const form = formidable({ multiples: true });
+  form.parse(req, (err, fields, files) => {
+    if (err) {
+      console.log(err);
+    }
+
+    cloudinary.uploader
+      .upload(files.images.filepath, {
+        public_id: "proshop",
+      })
+      .then((result) => {
+        const product = new Product({
+          title: fields.title,
+          description: fields.description,
+          price: +fields.price,
+          imageUrl: result.secure_url,
+          quantity: +fields.quantity,
+          ownerId: req.userInfo.userId,
+        });
+        return product.save();
+      })
+      .then((result) =>
+        res.status(200).json({ message: "done", response: result })
+      )
+      .catch((err) => {
+        console.log(err);
+        res.status(404).json({ message: "Something went wrong", error: err });
+      });
   });
-  product
-    .save()
-    .then((result) => {
-      res.status(201).json(result);
-    })
-    .catch((err) => res.status(404).json({ message: "Something went wrong" }));
 };
 exports.editProduct = async (req, res, next) => {
   const { title, price, description, quantity, userId, prevImages } = req.body;
@@ -94,9 +115,11 @@ exports.updateOrderStatus = async (req, res) => {
     if (!order) res.status(404).json({ message: "order not found" });
     order.orderStatus = orderStatus;
     const updatedOrder = await order.save();
-    const eventEmitter = req.app.get('eventEmitter');
-    eventEmitter.emit('statusChanged', {orderId, orderStatus});
-    res.status(200).json({ message: "order status updated", order: updatedOrder });
+    const eventEmitter = req.app.get("eventEmitter");
+    eventEmitter.emit("statusChanged", { orderId, orderStatus });
+    res
+      .status(200)
+      .json({ message: "order status updated", order: updatedOrder });
   } catch (err) {
     console.log(err);
   }
